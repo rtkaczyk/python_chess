@@ -31,7 +31,7 @@ def knight_moves(f, r):
            [(x, y) for x in (f - 1, f + 1) for y in (r - 2, r + 2) if inside(x, y)] + [(f, r)]
 
 def piece_moves(piece):
-    return(king_moves, queen_moves, rook_moves, bishop_moves, knight_moves)[piece]
+    return (king_moves, queen_moves, rook_moves, bishop_moves, knight_moves)[piece]
 
 def next_pieces(piece_set):
     return [i for i in xrange(len(piece_set)) if piece_set[i] > 0]
