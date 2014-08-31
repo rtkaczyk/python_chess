@@ -2,14 +2,24 @@ import sys
 
 files, ranks = None, None
 
+def memo(f):
+    cache = {}
+    def wrapper(*args):
+        r = cache.get(args)
+        if r is None:
+            r = f(*args)
+            cache[args] = r
+        return r
+    return wrapper
+
 def inside(f, r):
     return 0 <= f < files and 0 <= r < ranks
 
 def sq_2_idx(sq):
-    return sq[0] * files + sq[1]
+    return sq[0] * ranks + sq[1]
 
 def idx_2_sq(idx):
-    return divmod(idx, files)
+    return divmod(idx, ranks)
 
 def king_moves(f, r):
     return [(x, y) for x in (f - 1, f, f + 1) for y in (r - 1, r, r + 1) if inside(x, y)]
@@ -30,8 +40,11 @@ def knight_moves(f, r):
     return [(x, y) for x in (f - 2, f + 2) for y in (r - 1, r + 1) if inside(x, y)] + \
            [(x, y) for x in (f - 1, f + 1) for y in (r - 2, r + 2) if inside(x, y)] + [(f, r)]
 
-def piece_moves(piece):
-    return (king_moves, queen_moves, rook_moves, bishop_moves, knight_moves)[piece]
+@memo
+def piece_moves(piece, idx):
+    f, r = idx_2_sq(idx)
+    mvs = (king_moves, queen_moves, rook_moves, bishop_moves, knight_moves)[piece](f, r)
+    return map(sq_2_idx, mvs)
 
 def next_pieces(piece_set):
     return [i for i in xrange(len(piece_set)) if piece_set[i] > 0]
@@ -76,7 +89,7 @@ def solve(fs, rs, k = 0, q = 0, r = 0, b = 0, n = 0):
         if not pieces_left:
             solutions.append(pieces_on_board)
 
-        elif idx is None or safe_squares(board_coverage) < pieces_left:
+        elif idx is None or safe_squares(board_coverage[idx:]) < pieces_left:
             pass
         
         else:
@@ -84,7 +97,7 @@ def solve(fs, rs, k = 0, q = 0, r = 0, b = 0, n = 0):
                 next_idx(board_coverage, idx)))
 
             for piece in next_pieces(piece_set):
-                moves = map(sq_2_idx, piece_moves(piece)(*idx_2_sq(idx)))
+                moves = piece_moves(piece, idx)
                 if not captures(pieces_on_board, moves):
                     bc = cover_board(board_coverage, moves)
                     ps = pop_piece(piece_set, piece)
