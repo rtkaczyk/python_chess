@@ -1,6 +1,7 @@
 import sys
 
 files, ranks = None, None
+K, Q, R, B, N = range(5)
 
 def memo(f):
     cache = {}
@@ -12,110 +13,78 @@ def memo(f):
         return r
     return wrapper
 
-def inside(f, r):
-    return 0 <= f < files and 0 <= r < ranks
-
-def sq_2_idx(sq):
-    return sq[0] * ranks + sq[1]
+def sq_2_idx(f, r):
+    return f * ranks + r
 
 def idx_2_sq(idx):
     return divmod(idx, ranks)
 
-def king_moves(f, r):
-    return [(x, y) for x in (f - 1, f, f + 1) for y in (r - 1, r, r + 1) if inside(x, y)]
+def king_attacks((f, r), (_f, _r)):
+    return abs(f - _f) <= 1 and abs(r - _r) <= 1
 
-def queen_moves(f, r):
-    return rook_moves(f, r) + bishop_moves(f, r)
+def queen_attacks(sq, _sq):
+    return rook_attacks(sq, _sq) or bishop_attacks(sq, _sq)
 
-def rook_moves(f, r):
-    return [(x, r) for x in xrange(files)] + [(f, y) for y in xrange(ranks)]
+def rook_attacks((f, r), (_f, _r)):
+    return f == _f or r == _r
 
-def bishop_moves(f, r):
-    a1, b1 = min(f, r), min(files - f, ranks - r)
-    a2, b2 = min(f, ranks - r - 1), min(files - f, r + 1)
-    return zip(xrange(f - a1, f + b1), xrange(r - a1, r + b1)) + \
-           zip(xrange(f - a2, f + b2), xrange(r + a2, r - b2, -1))
+def bishop_attacks((f, r), (_f, _r)):
+    return abs(f - _f) == abs(r - _r)
 
-def knight_moves(f, r):
-    return [(x, y) for x in (f - 2, f + 2) for y in (r - 1, r + 1) if inside(x, y)] + \
-           [(x, y) for x in (f - 1, f + 1) for y in (r - 2, r + 2) if inside(x, y)] + [(f, r)]
+def knight_attacks((f, r), (_f, _r)):
+    df, dr = abs(f - _f), abs(r - _r)
+    return df + dr == 0 or df + dr == 3 and df > 0 and dr > 0
+
+attacks = (king_attacks, queen_attacks, rook_attacks, bishop_attacks, knight_attacks)
 
 @memo
-def piece_moves(piece, idx):
-    f, r = idx_2_sq(idx)
-    mvs = (king_moves, queen_moves, rook_moves, bishop_moves, knight_moves)[piece](f, r)
-    return map(sq_2_idx, mvs)
+def piece_attacks(piece, from_idx, target_idx):
+    return attacks[piece](idx_2_sq(from_idx), idx_2_sq(target_idx))
 
-def next_pieces(piece_set):
-    return [i for i in xrange(len(piece_set)) if piece_set[i] > 0]
+def sort_pieces(k, q, r, b, n): 
+    return [p for i, n in [(Q, q), (R, r), (B, b), (K, k), (N, n)] for p in [i] * n]
 
-def next_idx(board_coverage, idx):
-    try:
-        i = idx + 1
-        return i + board_coverage[i:].index(False)
-    except:
-        return None
+def drop_threatened(safe_squares, piece, idx):
+    return filter(lambda i: not piece_attacks(piece, idx, i), safe_squares)
 
-def pop_piece(piece_set, piece):
-    ps = piece_set[:]
-    ps[piece] -= 1
-    return ps
-
-def cover_board(board_coverage, moves):
-    bc = board_coverage[:]
-    for idx in moves:
-        bc[idx] = True
-    return bc
-
-def safe_squares(board_coverage):
-    return board_coverage.count(False)
-
-def captures(pieces_on_board, moves):
-    for idx, _ in pieces_on_board:
-        if idx in moves:
-            return True
-    return False
+def new_piece_attacks(pieces_on_board, piece, idx):
+    return next((True for i, _ in pieces_on_board if piece_attacks(piece, idx, i)), False)
 
 def solve(fs, rs, k = 0, q = 0, r = 0, b = 0, n = 0):
     global files, ranks
     files, ranks = fs, rs
-    stack = [([False] * files * ranks, [k, q, r, b, n], [], 0)]
+    stack = [(range(files * ranks), sort_pieces(k, q, r, b, n), [], 0)]
     solutions = []
 
-    while len(stack):
-        board_coverage, piece_set, pieces_on_board, idx = stack.pop()
-        pieces_left = sum(piece_set)
+    while stack:
+        safe_squares, piece_seq, pieces_on_board, idx = stack.pop()
 
-        if not pieces_left:
+        if not piece_seq:
             solutions.append(pieces_on_board)
 
-        elif idx is None or safe_squares(board_coverage[idx:]) < pieces_left:
+        elif len(safe_squares) < len(piece_seq):
             pass
         
         else:
-            stack.append((board_coverage, piece_set, pieces_on_board, 
-                next_idx(board_coverage, idx)))
+            piece, rem_pieces = piece_seq[0], piece_seq[1:]
+            for i in filter(lambda x: x >= idx, safe_squares):
+                if not new_piece_attacks(pieces_on_board, piece, i):
+                    safe_sqs = drop_threatened(safe_squares, piece, i)
+                    j = i + 1 if rem_pieces and piece == rem_pieces[0] else 0
+                    stack.append((safe_sqs, rem_pieces, pieces_on_board + [(i, piece)], j))
 
-            for piece in next_pieces(piece_set):
-                moves = piece_moves(piece, idx)
-                if not captures(pieces_on_board, moves):
-                    bc = cover_board(board_coverage, moves)
-                    ps = pop_piece(piece_set, piece)
-                    pb = pieces_on_board + [(idx, piece)]
-                    i  = next_idx(bc, idx)
-                    stack.append((bc, ps, pb, i))
     return solutions
 
-def print_solution(solution):
+def print_solution(pieces_on_board):
     board = ["."] * files * ranks
     pcs = ["K", "Q", "R", "B", "N"]
-    for i, p in solution:
+    for i, p in pieces_on_board:
         board[i] = pcs[p]
     for r in xrange(ranks):
         for f in xrange(files):
-            print board[sq_2_idx((f, r))],
+            print board[sq_2_idx(f, r)],
         print 
-    print 
+    print
 
 def test():
     assert len(solve(2, 2, k = 1, b = 1)) == 0
@@ -124,7 +93,10 @@ def test():
     assert len(solve(8, 8, q = 8)) == 92
 
 def main():
-    print len(solve(*map(int, sys.stdin.readline().split())))
+    solutions = solve(*map(int, sys.stdin.readline().split()))
+    print len(solutions), "solutions\n"
+    if solutions:
+        print_solution(solutions[0])
 
 if __name__ == "__main__":
     main()
